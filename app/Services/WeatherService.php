@@ -17,7 +17,7 @@ class WeatherService
 
     public function __construct()
     {
-        $this->apiKey   = config('services.openweather.api_key', '');
+        $this->apiKey   = config('services.openweather.api_key') ?? '';
         $this->endpoint = config('services.openweather.endpoint', 'https://api.openweathermap.org/data/2.5');
     }
 
