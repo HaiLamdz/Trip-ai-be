@@ -33,4 +33,4 @@ RUN mkdir -p storage/logs bootstrap/cache \
 
 EXPOSE 10000
 
-CMD sh -c "php artisan migrate --force && php artisan serve --host=0.0.0.0 --port=${PORT}"
+CMD ["sh","-c","php artisan migrate --force && php artisan serve --host=0.0.0.0 --port=$PORT"]
