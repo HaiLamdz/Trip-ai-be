@@ -57,6 +57,8 @@ class GenerateTripJob implements ShouldQueue
                 durationDays:      $trip->duration_days,
                 budget:            (float) $trip->budget,
                 numPeople:         $trip->num_people,
+                origin:            $trip->origin,
+                travelType:        $trip->travel_type,
                 transportMode:     $trip->transport_mode,
                 accommodationType: $trip->accommodation_type,
                 accommodationArea: $trip->accommodation_area,

@@ -202,17 +202,28 @@ PROMPT;
             $weatherSummary = json_encode($request->weatherData, JSON_UNESCAPED_UNICODE);
         }
 
+        $origin      = $request->origin ? "Xuất phát từ: {$request->origin}" : '';
+        $travelType  = match($request->travelType) {
+            'solo'   => 'Du lịch một mình — ưu tiên hoạt động tự do, linh hoạt, hostel/cafe gặp gỡ người mới',
+            'couple' => 'Cặp đôi — ưu tiên không khí lãng mạn, nhà hàng view đẹp, hoạt động chung',
+            'family' => 'Gia đình có trẻ em — ưu tiên hoạt động an toàn, phù hợp trẻ nhỏ, tránh leo trèo nguy hiểm, nghỉ sớm',
+            'group'  => 'Nhóm bạn — ưu tiên hoạt động vui nhộn, nightlife, ăn uống đông người, BBQ/buffet',
+            default  => '',
+        };
+
         $schema = '{"days":[{"date":"YYYY-MM-DD","weather":{"summary":"","icon":"01d","temperature_high":0,"temperature_low":0,"rain_probability":0},"activities":[{"time":"HH:MM","title":"","description":"","place_name":"","place_type":"food|attraction|hotel|cafe|transport|nightlife|other","estimated_cost":0,"duration_minutes":0,"transport_to_next":"","distance_to_next_km":0,"latitude":0.0,"longitude":0.0}]}]}';
 
         return <<<PROMPT
 Bạn là chuyên gia lập kế hoạch du lịch Việt Nam. Hãy tạo lịch trình chi tiết cho chuyến đi sau:
 
 Điểm đến: {$request->destination}
+{$origin}
 Thời gian: {$request->durationDays} ngày, bắt đầu {$request->startDate}
 Ngân sách: {$request->budget} VND cho {$request->numPeople} người
 Phương tiện di chuyển đến nơi: {$transportMode}
 Giờ đến nơi ngày đầu: {$arrivalTime}
 Loại chỗ ở: {$accommodationType} ({$accommodationArea})
+Loại chuyến đi: {$travelType}
 Sở thích: {$preferences}
 Ghi chú: {$notes}
 Dự báo thời tiết: {$weatherSummary}
@@ -293,6 +304,15 @@ PROMPT;
             $visitedSection = "\nĐịa điểm đã đến ở các ngày trước (KHÔNG lặp lại): {$list}";
         }
 
+        $travelTypeHint = match($request->travelType) {
+            'solo'   => 'Du lịch một mình — ưu tiên hoạt động tự do, linh hoạt, cafe gặp gỡ người mới',
+            'couple' => 'Cặp đôi — ưu tiên không khí lãng mạn, nhà hàng view đẹp, hoạt động chung',
+            'family' => 'Gia đình có trẻ em — ưu tiên an toàn, phù hợp trẻ nhỏ, tránh leo trèo nguy hiểm, nghỉ sớm',
+            'group'  => 'Nhóm bạn — ưu tiên vui nhộn, nightlife, ăn uống đông người, BBQ/buffet',
+            default  => '',
+        };
+        $originHint = $request->origin ? "Xuất phát từ: {$request->origin}" : '';
+
         // Day-specific instructions
         $daySpecific = '';
         if ($dayNumber === 1) {
@@ -349,7 +369,9 @@ NGUYÊN TẮC CHUNG:
 
 THÔNG TIN CHUYẾN ĐI:
 Điểm đến: {$request->destination}
+{$originHint}
 Ngày: {$dayNumber}/{$request->durationDays} (ngày {$date})
+Loại chuyến đi: {$travelTypeHint}
 Loại chỗ ở: {$accommodationType} ({$accommodationArea})
 Tổng ngân sách cả chuyến: {$totalBudget} VND cho {$request->numPeople} người
 Ngân sách ngày này (tổng {$request->numPeople} người): {$budgetPerDayTotal} VND
@@ -368,6 +390,7 @@ OUTPUT — QUY TẮC NGÂN SÁCH BẮT BUỘC:
 - Phân bổ hợp lý: lưu trú ~30-40%, ăn uống ~30%, tham quan ~20%, di chuyển ~10%
 - Chỉ trả về JSON, KHÔNG thêm bất kỳ text nào ngoài JSON
 - Tạo 5-7 hoạt động hợp lý từ sáng đến tối
+- description mỗi hoạt động: TỐI ĐA 100 ký tự, ngắn gọn súc tích
 - Cung cấp tọa độ latitude/longitude chính xác cho từng địa điểm
 - KHÔNG sử dụng lại bất kỳ địa điểm nào đã liệt kê ở trên
 
@@ -393,7 +416,7 @@ PROMPT;
             }
 
             try {
-                $response = Http::timeout(60)->post(
+                $response = Http::timeout(90)->post(
                     $this->endpoint . '?key=' . $this->apiKey,
                     [
                         'contents'         => [
@@ -401,7 +424,8 @@ PROMPT;
                         ],
                         'generationConfig' => [
                             'temperature'     => 0.7,
-                            'maxOutputTokens' => 8192,
+                            'maxOutputTokens' => 16384,
+                            'responseMimeType' => 'application/json',
                         ],
                     ]
                 );
@@ -410,8 +434,18 @@ PROMPT;
                     throw new \RuntimeException('Gemini API error: ' . $response->status() . ' ' . $response->body());
                 }
 
+                // Kiểm tra finishReason — nếu MAX_TOKENS thì JSON bị cắt
+                $finishReason = $response->json('candidates.0.finishReason', '');
                 $text = $response->json('candidates.0.content.parts.0.text', '');
-                Log::error($text);
+
+                if ($finishReason === 'MAX_TOKENS') {
+                    Log::warning('GeminiService: response truncated (MAX_TOKENS), attempting JSON repair', [
+                        'attempt' => $attempt + 1,
+                        'raw_len' => strlen($text),
+                    ]);
+                    $text = $this->repairTruncatedJson($text);
+                }
+
                 $data = $this->extractJson($text);
 
                 if ($expectKey !== null && ! isset($data[$expectKey])) {
@@ -433,6 +467,49 @@ PROMPT;
     }
 
     /**
+     * Cố gắng phục hồi JSON bị cắt giữa chừng do MAX_TOKENS.
+     * Chiến lược: xóa activity cuối cùng bị incomplete, đóng lại tất cả brackets.
+     */
+    private function repairTruncatedJson(string $text): string
+    {
+        $text = trim($text);
+        // Strip markdown fences nếu có
+        $text = preg_replace('/^```(?:json)?\s*/i', '', $text);
+        $text = preg_replace('/\s*```\s*$/i', '', $text);
+        $text = trim($text);
+
+        // Xóa control characters
+        $text = preg_replace('/[\x00-\x08\x0B\x0C\x0E-\x1F]/u', '', $text);
+
+        // Thử parse nguyên, nếu được thì không cần repair
+        $decoded = json_decode($text, true);
+        if ($decoded !== null) {
+            return $text;
+        }
+
+        // Cắt bỏ phần cuối bị dở dang: tìm "}" hoàn chỉnh cuối cùng trong mảng activities
+        // Tìm vị trí "}," hoặc "}" cuối cùng mà sau đó không còn "}" nào nữa để đóng activity
+        // Chiến lược đơn giản: cắt tại "}" cuối cùng, rồi đóng mảng + object
+        $lastCompleteActivity = strrpos($text, '},');
+        if ($lastCompleteActivity === false) {
+            $lastCompleteActivity = strrpos($text, '}');
+        }
+
+        if ($lastCompleteActivity !== false) {
+            $text = substr($text, 0, $lastCompleteActivity + 1);
+        }
+
+        // Đếm brackets mở chưa đóng và đóng lại
+        $opens  = substr_count($text, '[') - substr_count($text, ']');
+        $braces = substr_count($text, '{') - substr_count($text, '}');
+
+        for ($i = 0; $i < max(0, $opens); $i++)  $text .= ']';
+        for ($i = 0; $i < max(0, $braces); $i++) $text .= '}';
+
+        return $text;
+    }
+
+    /**
      * Trích xuất JSON từ text response của AI (có thể có markdown code block).
      *
      * @return array<string, mixed>
@@ -442,19 +519,16 @@ PROMPT;
         $text = trim($text);
 
         // Bỏ markdown ```json ... ```
-        $text = preg_replace('/^```(?:json)?\s*/', '', $text);
-        $text = preg_replace('/\s*```$/', '', $text);
+        $text = preg_replace('/^```(?:json)?\s*/i', '', $text);
+        $text = preg_replace('/\s*```\s*$/i', '', $text);
         $text = trim($text);
 
-        // Nếu Gemini có nói thêm trước/sau JSON thì cắt phần JSON chính
+        // Nếu AI có nói thêm trước/sau JSON thì cắt phần JSON chính
         $start = strpos($text, '{');
-        $end = strrpos($text, '}');
-
-        if ($start === false || $end === false || $end <= $start) {
+        if ($start === false) {
             throw new \RuntimeException('No valid JSON object found in AI response');
         }
-
-        $text = substr($text, $start, $end - $start + 1);
+        $text = substr($text, $start);
 
         // Xóa control characters gây lỗi json_decode
         $text = preg_replace('/[\x00-\x08\x0B\x0C\x0E-\x1F]/u', '', $text);
@@ -462,9 +536,19 @@ PROMPT;
         try {
             return json_decode($text, true, 512, JSON_THROW_ON_ERROR);
         } catch (\JsonException $e) {
+            // Thử repair một lần nữa trước khi báo lỗi
+            $repaired = $this->repairTruncatedJson($text);
+            if ($repaired !== $text) {
+                try {
+                    return json_decode($repaired, true, 512, JSON_THROW_ON_ERROR);
+                } catch (\JsonException) {
+                    // fall through
+                }
+            }
+
             Log::error('AI raw response parse failed', [
                 'error' => $e->getMessage(),
-                'raw' => mb_substr($text, 0, 3000),
+                'raw'   => mb_substr($text, 0, 3000),
             ]);
 
             throw new \RuntimeException('Failed to parse JSON from AI response: ' . $e->getMessage());

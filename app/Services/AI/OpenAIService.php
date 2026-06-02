@@ -60,6 +60,15 @@ class OpenAIService implements AIServiceInterface
             $visitedSection = "\nĐịa điểm đã đến ở các ngày trước (KHÔNG lặp lại): {$list}";
         }
 
+        $travelTypeHint = match($request->travelType) {
+            'solo'   => 'Du lịch một mình — ưu tiên hoạt động tự do, linh hoạt, cafe gặp gỡ người mới',
+            'couple' => 'Cặp đôi — ưu tiên không khí lãng mạn, nhà hàng view đẹp, hoạt động chung',
+            'family' => 'Gia đình có trẻ em — ưu tiên an toàn, phù hợp trẻ nhỏ, tránh leo trèo nguy hiểm, nghỉ sớm',
+            'group'  => 'Nhóm bạn — ưu tiên vui nhộn, nightlife, ăn uống đông người, BBQ/buffet',
+            default  => '',
+        };
+        $originHint = $request->origin ? "Xuất phát từ: {$request->origin}" : '';
+
         $schema = '{"weather":{"summary":"","icon":"01d","temperature_high":0,"temperature_low":0,"rain_probability":0},"activities":[{"time":"HH:MM","title":"","description":"","place_name":"","place_type":"food|attraction|hotel|cafe|transport|other","estimated_cost":0,"duration_minutes":0,"transport_to_next":"","distance_to_next_km":0,"latitude":0.0,"longitude":0.0}]}';
 
         $prompt = <<<PROMPT
@@ -102,7 +111,9 @@ Trước khi lập kế hoạch, hãy suy nghĩ từng bước:
 
 THÔNG TIN CHUYẾN ĐI:
 Điểm đến: {$request->destination}
+{$originHint}
 Ngày: {$dayNumber}/{$request->durationDays} (ngày {$date})
+Loại chuyến đi: {$travelTypeHint}
 Ngân sách/người/ngày: {$budgetPerDay} VND
 Số người: {$request->numPeople}
 Phương tiện: {$transportMode}
@@ -216,12 +227,23 @@ PROMPT;
             ? 'Không có dữ liệu thời tiết'
             : json_encode($request->weatherData, JSON_UNESCAPED_UNICODE);
 
+        $travelTypeHint = match($request->travelType) {
+            'solo'   => 'Du lịch một mình — ưu tiên hoạt động tự do, linh hoạt, cafe gặp gỡ người mới',
+            'couple' => 'Cặp đôi — ưu tiên không khí lãng mạn, nhà hàng view đẹp, hoạt động chung',
+            'family' => 'Gia đình có trẻ em — ưu tiên an toàn, phù hợp trẻ nhỏ, tránh leo trèo nguy hiểm, nghỉ sớm',
+            'group'  => 'Nhóm bạn — ưu tiên vui nhộn, nightlife, ăn uống đông người, BBQ/buffet',
+            default  => '',
+        };
+        $originHint = $request->origin ? "Xuất phát từ: {$request->origin}" : '';
+
         $schema = '{"days":[{"date":"YYYY-MM-DD","weather":{"summary":"","icon":"01d","temperature_high":0,"temperature_low":0,"rain_probability":0},"activities":[{"time":"HH:MM","title":"","description":"","place_name":"","place_type":"food|attraction|hotel|cafe|transport|other","estimated_cost":0,"duration_minutes":0,"transport_to_next":"","distance_to_next_km":0,"latitude":0.0,"longitude":0.0}]}]}';
 
         return "Bạn là chuyên gia lập kế hoạch du lịch Việt Nam. Tạo lịch trình cho:\n"
             . "Điểm đến: {$request->destination}\n"
+            . "{$originHint}\n"
             . "Thời gian: {$request->durationDays} ngày, bắt đầu {$request->startDate}\n"
             . "Ngân sách: {$request->budget} VND cho {$request->numPeople} người\n"
+            . "Loại chuyến đi: {$travelTypeHint}\n"
             . "Phương tiện: {$transportMode}\nSở thích: {$preferences}\nGhi chú: {$notes}\n"
             . "Thời tiết: {$weatherSummary}\nSở thích cá nhân: {$userPrefs}\n\n"
             . "Trả về ĐÚNG JSON schema sau, không thêm text:\n{$schema}";

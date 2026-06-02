@@ -10,6 +10,8 @@ class TripGenerationRequest
         public readonly int     $durationDays,
         public readonly float   $budget,
         public readonly int     $numPeople,
+        public readonly ?string $origin              = null,
+        public readonly ?string $travelType          = null,  // solo|couple|family|group
         public readonly ?string $transportMode       = null,
         public readonly ?string $accommodationType   = null,  // hotel|homestay|hostel|resort|airbnb|villa|other
         public readonly ?string $accommodationArea   = null,  // khu vực / tên chỗ ở người dùng nhập
