@@ -39,16 +39,20 @@ return [
     // AI Services
     // ─────────────────────────────────────────────
     'ai' => [
-        'provider' => env('AI_PROVIDER', 'gemini'),
-        'gemini'   => [
-            'api_key'  => env('GEMINI_API_KEY'),
-            'endpoint' => 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent',
-        ],
+        'provider' => env('AI_PROVIDER', 'groq'),
         'openai'   => [
             'api_key'  => env('OPENAI_API_KEY'),
             'endpoint' => 'https://api.openai.com/v1/chat/completions',
             'model'    => 'gpt-4o-mini',
         ],
+    ],
+
+    // ─────────────────────────────────────────────
+    // Groq
+    // ─────────────────────────────────────────────
+    'groq' => [
+        'api_key' => env('GROQ_API_KEY'),
+        'model'   => env('GROQ_MODEL', 'llama-3.3-70b-versatile'),
     ],
 
     // ─────────────────────────────────────────────

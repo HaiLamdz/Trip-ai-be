@@ -3,7 +3,7 @@
 namespace App\Providers;
 
 use App\Services\AI\AIServiceInterface;
-use App\Services\AI\GeminiService;
+use App\Services\AI\GroqService;
 use App\Services\AI\OpenAIService;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
@@ -16,9 +16,9 @@ class AppServiceProvider extends ServiceProvider
     {
         // Bind AI service based on AI_PROVIDER config
         $this->app->bind(AIServiceInterface::class, function ($app) {
-            return match (config('services.ai.provider', 'gemini')) {
+            return match (config('services.ai.provider', 'groq')) {
                 'openai' => new OpenAIService(),
-                default  => new GeminiService(),
+                default  => new GroqService(),
             };
         });
     }

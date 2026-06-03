@@ -23,8 +23,13 @@ class TripController extends Controller
     {
         $user = Auth::guard('api')->user();
 
-        // Geocode destination to get lat/lng
-        $coords = $geocodingService->geocode($request->destination);
+        // Geocode destination — dùng timeout ngắn, không block request nếu chậm
+        $coords = null;
+        try {
+            $coords = $geocodingService->geocode($request->destination);
+        } catch (\Throwable) {
+            // Geocoding thất bại → vẫn tạo trip, GenerateTripJob sẽ geocode lại nếu cần
+        }
 
         $trip = Trip::create([
             'user_id'            => $user->id,
