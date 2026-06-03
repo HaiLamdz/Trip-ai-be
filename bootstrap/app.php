@@ -26,6 +26,34 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->throttleApi();
     })
     ->withExceptions(function (Exceptions $exceptions): void {
+        // ─── Telegram bug reporting ──────────────────────────────────────
+        $exceptions->report(function (\Throwable $e) {
+            // Bỏ qua các lỗi HTTP bình thường (4xx) và một số exception không cần alert
+            $ignore = [
+                \Illuminate\Auth\AuthenticationException::class,
+                \Illuminate\Auth\Access\AuthorizationException::class,
+                \Illuminate\Validation\ValidationException::class,
+                \Illuminate\Database\Eloquent\ModelNotFoundException::class,
+                \Symfony\Component\HttpKernel\Exception\NotFoundHttpException::class,
+                \Symfony\Component\HttpKernel\Exception\MethodNotAllowedHttpException::class,
+                \Tymon\JWTAuth\Exceptions\TokenExpiredException::class,
+                \Tymon\JWTAuth\Exceptions\TokenInvalidException::class,
+                \Tymon\JWTAuth\Exceptions\JWTException::class,
+            ];
+
+            foreach ($ignore as $class) {
+                if ($e instanceof $class) {
+                    return false; // false = vẫn log vào file, chỉ skip custom report
+                }
+            }
+
+            try {
+                app(\App\Services\TelegramService::class)->sendException($e);
+            } catch (\Throwable) {
+                // Không làm gì để tránh vòng lặp lỗi
+            }
+        });
+
         // JWT token invalid/expired → return 401 JSON instead of redirect
         $exceptions->render(function (\Tymon\JWTAuth\Exceptions\TokenExpiredException $e, $request) {
             if ($request->expectsJson() || $request->is('api/*')) {
