@@ -61,12 +61,19 @@ class GroqService implements AIServiceInterface
         TimelineDTO $currentTimeline,
         array $conversationHistory
     ): ChatResponseDTO {
-        $timelineJson = json_encode($currentTimeline->toArray(), JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+        // Rút gọn timeline: bỏ description dài, chỉ giữ thông tin cần thiết để AI hiểu cấu trúc
+        $timelineJson = json_encode(
+            $this->compactTimeline($currentTimeline->toArray()),
+            JSON_UNESCAPED_UNICODE
+        );
 
+        // Chỉ giữ tối đa 6 tin nhắn gần nhất để tránh vượt token limit
+        $recentHistory = array_slice($conversationHistory, -6);
         $historyText = '';
-        foreach ($conversationHistory as $msg) {
+        foreach ($recentHistory as $msg) {
             $role         = $msg['role'] === 'user' ? 'Người dùng' : 'AI';
-            $historyText .= "{$role}: {$msg['content']}\n";
+            $content      = mb_substr($msg['content'], 0, 300); // cắt mỗi tin tối đa 300 ký tự
+            $historyText .= "{$role}: {$content}\n";
         }
 
         $prompt = <<<PROMPT
@@ -499,8 +506,8 @@ PROMPT;
                         $status = $response->status();
                         $body   = $response->body();
 
-                        // 429 rate limit hoặc 503 → thử model tiếp theo
-                        if (in_array($status, [429, 503, 529])) {
+                        // 429 rate limit, 503, hoặc 413 (payload quá lớn) → thử model tiếp theo
+                        if (in_array($status, [413, 429, 503, 529])) {
                             Log::warning("GroqService: model {$model} returned {$status}, trying next model", [
                                 'attempt' => $attempt + 1,
                                 'model'   => $model,
@@ -584,6 +591,49 @@ PROMPT;
 
             throw new \RuntimeException('Failed to parse JSON from Groq response: ' . $e->getMessage());
         }
+    }
+
+    /**
+     * Rút gọn timeline để giảm token khi gửi vào chat prompt.
+     * Bỏ description dài, chỉ giữ thông tin cấu trúc cần thiết.
+     *
+     * @param  array<string, mixed> $timelineArray
+     * @return array<string, mixed>
+     */
+    private function compactTimeline(array $timelineArray): array
+    {
+        if (empty($timelineArray['days'])) {
+            return $timelineArray;
+        }
+
+        $compacted = ['days' => []];
+        foreach ($timelineArray['days'] as $day) {
+            $compactedDay = [
+                'date'    => $day['date'] ?? '',
+                'weather' => isset($day['weather']) ? [
+                    'summary'     => $day['weather']['summary'] ?? '',
+                    'temperature_high' => $day['weather']['temperature_high'] ?? 0,
+                    'temperature_low'  => $day['weather']['temperature_low'] ?? 0,
+                ] : null,
+                'activities' => [],
+            ];
+
+            foreach ($day['activities'] ?? [] as $act) {
+                $compactedDay['activities'][] = [
+                    'time'           => $act['time'] ?? '',
+                    'title'          => $act['title'] ?? '',
+                    'place_name'     => $act['place_name'] ?? '',
+                    'place_type'     => $act['place_type'] ?? '',
+                    'estimated_cost' => $act['estimated_cost'] ?? 0,
+                    'latitude'       => $act['latitude'] ?? 0,
+                    'longitude'      => $act['longitude'] ?? 0,
+                ];
+            }
+
+            $compacted['days'][] = $compactedDay;
+        }
+
+        return $compacted;
     }
 
     /**
