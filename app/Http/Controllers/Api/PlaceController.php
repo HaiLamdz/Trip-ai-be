@@ -8,6 +8,7 @@ use App\Models\Trip;
 use App\Models\TripDay;
 use App\Models\TripBudget;
 use App\Models\TripPlace;
+use App\Services\GeocodingService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -61,7 +62,7 @@ class PlaceController extends Controller
     // ─────────────────────────────────────────────
 
     /** POST /api/trips/{tripId}/days/{dayId}/places */
-    public function storeActivity(Request $request, int $tripId, int $dayId): JsonResponse
+    public function storeActivity(Request $request, int $tripId, int $dayId, GeocodingService $geocodingService): JsonResponse
     {
         $user = Auth::guard('api')->user();
         $trip = Trip::find($tripId);
@@ -77,9 +78,9 @@ class PlaceController extends Controller
 
         $data = $request->validate([
             'time'                => 'required|string|max:10',
-            'title'               => 'required|string|max:255',
+            'title'               => 'sometimes|nullable|string|max:255',
             'description'         => 'nullable|string|max:1000',
-            'place_name'          => 'nullable|string|max:255',
+            'place_name'          => 'required|string|max:255',
             'place_type'          => 'nullable|string|in:food,cafe,attraction,hotel,transport,nightlife,shopping,other',
             'estimated_cost'      => 'nullable|numeric|min:0',
             'duration_minutes'    => 'nullable|integer|min:0',
@@ -88,6 +89,24 @@ class PlaceController extends Controller
             'latitude'            => 'nullable|numeric',
             'longitude'           => 'nullable|numeric',
         ]);
+
+        // Dùng place_name làm title nếu không có title
+        if (empty($data['title'])) {
+            $data['title'] = $data['place_name'];
+        }
+
+        // Tự động geocode nếu không có tọa độ
+        if ((empty($data['latitude']) || empty($data['longitude'])) && ! empty($data['place_name'])) {
+            try {
+                $coords = $geocodingService->geocode($data['place_name'] . ', ' . $trip->destination);
+                if ($coords) {
+                    $data['latitude']  = $coords['lat'];
+                    $data['longitude'] = $coords['lng'];
+                }
+            } catch (\Throwable) {
+                // Geocoding thất bại → vẫn lưu, bản đồ sẽ không hiển thị pin
+            }
+        }
 
         // Append at end
         $maxOrder = TripPlace::where('trip_day_id', $dayId)->max('sort_order') ?? -1;

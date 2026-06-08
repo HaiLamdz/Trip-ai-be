@@ -86,14 +86,26 @@ Lịch sử hội thoại:
 
 Yêu cầu mới của người dùng: {$userMessage}
 
-Hãy phân tích yêu cầu và cập nhật lịch trình nếu cần. Trả về JSON với format:
+Hãy phân tích yêu cầu và cập nhật lịch trình nếu cần.
+
+QUY TẮC BẮT BUỘC:
+- "updated_timeline" phải chứa TOÀN BỘ lịch trình (tất cả các ngày, tất cả activities), không phải chỉ phần thay đổi.
+- Giữ nguyên 100% các activities không được yêu cầu thay đổi (bao gồm cả description, latitude, longitude).
+- Chỉ thêm/sửa/xóa đúng những activity được yêu cầu.
+- Mỗi activity PHẢI có đầy đủ các field: time, title, description, place_name, place_type, estimated_cost, duration_minutes, transport_to_next, distance_to_next_km, latitude, longitude.
+- place_type chỉ được dùng: food | attraction | hotel | cafe | transport | nightlife | other
+- Nếu không cần thay đổi gì, set "updated_timeline" = null.
+
+Schema bắt buộc cho updated_timeline:
+{"days":[{"date":"YYYY-MM-DD","weather":{"summary":"","icon":"01d","temperature_high":0,"temperature_low":0,"rain_probability":0},"activities":[{"time":"HH:MM","title":"","description":"","place_name":"","place_type":"food","estimated_cost":0,"duration_minutes":0,"transport_to_next":"","distance_to_next_km":0,"latitude":0.0,"longitude":0.0}]}]}
+
+Trả về JSON với format:
 {
   "message": "Mô tả những thay đổi đã thực hiện",
-  "updated_timeline": { ... timeline JSON theo schema chuẩn ... },
+  "updated_timeline": { ... hoặc null ... },
   "suggestions": ["gợi ý 1", "gợi ý 2"]
 }
 
-Nếu không cần thay đổi timeline, set "updated_timeline" = null.
 Return only valid JSON. Do not use markdown. Do not wrap response in code blocks. Do not explain anything.
 PROMPT;
 
@@ -278,7 +290,7 @@ QUY TẮC VỀ CHỖ Ở & LỘ TRÌNH:
 3. Mỗi ngày: Nhóm hoạt động theo khu vực địa lý gần chỗ ở — tối thiểu hóa di chuyển.
 4. Tính distance_to_next_km từ tọa độ thực tế của từng địa điểm đến địa điểm tiếp theo.
 5. Cuối mỗi ngày: Hoạt động cuối nên là ăn tối gần khách sạn hoặc về khách sạn.
-6. Ngày cuối: Thêm "Check-out" buổi sáng (estimated_cost=0) trước khi ra sân bay/bến xe.
+6. Ngày cuối: Thêm "Check-out" buổi sáng (estimated_cost=0) trước khi kết thúc hành trình. Chỉ thêm activity di chuyển về nếu điểm xuất phát ({$request->origin}) khác điểm đến ({$request->destination}).
 
 QUY TẮC NGÂN SÁCH — BẮT BUỘC TUYỆT ĐỐI:
 - estimated_cost trong mỗi activity là số tiền THỰC TẾ cho TẤT CẢ {$request->numPeople} người (không phải/người)
@@ -375,11 +387,19 @@ NGÀY ĐẦU TIÊN — QUY TẮC BẮT BUỘC:
 - Tên chỗ ở phải là tên THẬT, NỔI TIẾNG, DỄ TÌM TRÊN GOOGLE MAPS với tọa độ chính xác.
 DAY1;
         } elseif ($dayNumber === $request->durationDays) {
+            // Kiểm tra xem điểm xuất phát và điểm đến có khác nhau không
+            $needsReturnTransport = $request->origin
+                && strtolower(trim($request->origin)) !== strtolower(trim($request->destination));
+
+            $returnTransportNote = $needsReturnTransport
+                ? "- Hoạt động cuối cùng là di chuyển về lại {$request->origin} với place_type=\"transport\" nếu phù hợp với hành trình."
+                : '- KHÔNG thêm activity di chuyển ra sân bay hay bến xe trừ khi người dùng yêu cầu rõ ràng trong ghi chú.';
+
             $daySpecific = <<<LASTDAY
 
 NGÀY CUỐI — QUY TẮC BẮT BUỘC:
 - Hoạt động ĐẦU TIÊN phải là "Check-out khách sạn" vào buổi sáng (~10:00) với place_type="hotel", estimated_cost=0.
-- Hoạt động cuối cùng là di chuyển ra sân bay/bến xe với place_type="transport".
+{$returnTransportNote}
 LASTDAY;
         } else {
             $daySpecific = <<<MIDDAY
@@ -622,9 +642,13 @@ PROMPT;
                 $compactedDay['activities'][] = [
                     'time'           => $act['time'] ?? '',
                     'title'          => $act['title'] ?? '',
+                    'description'    => mb_substr($act['description'] ?? '', 0, 120),
                     'place_name'     => $act['place_name'] ?? '',
                     'place_type'     => $act['place_type'] ?? '',
                     'estimated_cost' => $act['estimated_cost'] ?? 0,
+                    'duration_minutes' => $act['duration_minutes'] ?? 0,
+                    'transport_to_next' => $act['transport_to_next'] ?? null,
+                    'distance_to_next_km' => $act['distance_to_next_km'] ?? 0,
                     'latitude'       => $act['latitude'] ?? 0,
                     'longitude'      => $act['longitude'] ?? 0,
                 ];

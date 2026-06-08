@@ -82,6 +82,11 @@ class Trip extends Model
         return $this->hasMany(AiConversation::class)->orderBy('created_at');
     }
 
+    public function expenses(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(TripExpense::class);
+    }
+
     public function favoritedBy(): \Illuminate\Database\Eloquent\Relations\BelongsToMany
     {
         return $this->belongsToMany(User::class, 'favorites');

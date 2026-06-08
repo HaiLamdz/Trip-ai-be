@@ -4,6 +4,8 @@ use App\Http\Controllers\Api\ActivityLogController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\BudgetController;
 use App\Http\Controllers\Api\ChatController;
+use App\Http\Controllers\Api\CheckinController;
+use App\Http\Controllers\Api\ExpenseController;
 use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\PlaceController;
 use App\Http\Controllers\Api\ProfileController;
@@ -71,6 +73,17 @@ Route::middleware(['jwt.auth', 'throttle:api'])->group(function () {
         Route::post('/{tripId}/days/{dayId}/places',              [PlaceController::class, 'storeActivity']);
         Route::put('/{tripId}/days/{dayId}/places/{placeId}',     [PlaceController::class, 'updateActivity']);
         Route::delete('/{tripId}/days/{dayId}/places/{placeId}',  [PlaceController::class, 'destroyActivity']);
+
+        // Check-in
+        Route::post('/{tripId}/places/{placeId}/checkin',         [CheckinController::class, 'checkin']);
+        Route::delete('/{tripId}/places/{placeId}/checkin',       [CheckinController::class, 'undo']);
+        Route::get('/{tripId}/checkins',                          [CheckinController::class, 'index']);
+
+        // Expenses
+        Route::get('/{tripId}/expenses',                          [ExpenseController::class, 'index']);
+        Route::post('/{tripId}/expenses',                         [ExpenseController::class, 'store']);
+        Route::put('/{tripId}/expenses/{expenseId}',              [ExpenseController::class, 'update']);
+        Route::delete('/{tripId}/expenses/{expenseId}',           [ExpenseController::class, 'destroy']);
     });
 
     // Favorites
