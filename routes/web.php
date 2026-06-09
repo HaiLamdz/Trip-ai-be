@@ -1,6 +1,7 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Facades\File;
 
 Route::get('/', function () {
     return view('welcome');
@@ -11,11 +12,16 @@ Route::get('/health', function () {
     ]);
 });
 Route::get('/debug-storage', function () {
+    $publicPath = storage_path('app/public');
+
     return [
-        'storage_exists' => file_exists(public_path('storage')),
-        'storage_link' => is_link(public_path('storage')),
-        'checkins_exists' => file_exists(
-            storage_path('app/public/checkins')
-        ),
+        'public_exists' => is_dir($publicPath),
+        'public_contents' => is_dir($publicPath)
+            ? array_slice(scandir($publicPath), 0, 50)
+            : [],
+        'checkins_exists' => is_dir($publicPath . '/checkins'),
+        'checkins_contents' => is_dir($publicPath . '/checkins')
+            ? array_slice(scandir($publicPath . '/checkins'), 0, 50)
+            : [],
     ];
 });
