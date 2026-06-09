@@ -33,6 +33,7 @@ RUN composer install \
 RUN mkdir -p storage/logs bootstrap/cache \
     && chmod -R 775 storage bootstrap/cache
 
+    RUN php artisan storage:link || true
 # Supervisor config để chạy cả web server lẫn queue worker
 COPY docker/supervisord.conf /etc/supervisord.conf
 

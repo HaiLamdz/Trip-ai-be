@@ -50,6 +50,7 @@ Route::middleware(['jwt.auth', 'throttle:api'])->group(function () {
     Route::prefix('profile')->group(function () {
         Route::get('/',            [ProfileController::class, 'show']);
         Route::put('/',            [ProfileController::class, 'update']);
+        Route::post('/',           [ProfileController::class, 'update']); // POST alias for multipart/form-data uploads
         Route::put('/preferences', [ProfileController::class, 'updatePreferences']);
     });
 
