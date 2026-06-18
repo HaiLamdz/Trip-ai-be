@@ -197,6 +197,68 @@ PROMPT;
         return $this->callWithRetry($prompt, expectKey: 'categories');
     }
 
+    // ─────────────────────────────────────────────
+    // generateCoverImageQuery — sinh search query cho ảnh đại diện
+    // ─────────────────────────────────────────────
+
+    public function generateCoverImageQuery(\App\Models\Trip $trip): string
+    {
+        $travelType = match ($trip->travel_type) {
+            'couple'  => 'romantic couple travel',
+            'family'  => 'family vacation',
+            'group'   => 'group friends travel',
+            default   => 'travel',
+        };
+
+        // Lấy tên một vài địa điểm nổi bật từ timeline để query chính xác hơn
+        $topPlaces = collect($trip->days ?? [])
+            ->flatMap(fn ($day) => is_object($day) ? $day->places->toArray() : ($day['activities'] ?? []))
+            ->filter(fn ($p) => in_array(
+                is_array($p) ? ($p['place_type'] ?? '') : ($p->place_type ?? ''),
+                ['attraction', 'hotel']
+            ))
+            ->take(3)
+            ->map(fn ($p) => is_array($p) ? ($p['place_name'] ?? '') : ($p->place_name ?? ''))
+            ->filter()
+            ->implode(', ');
+
+        $placesHint = $topPlaces ? "Một số địa điểm trong chuyến đi: {$topPlaces}." : '';
+
+        $prompt = <<<PROMPT
+You are a travel photography expert. Given a trip itinerary, suggest the BEST Unsplash search query to find a stunning cover photo for this trip.
+
+Trip details:
+- Destination: {$trip->destination}
+- Duration: {$trip->duration_days} days
+- Travel type: {$travelType}
+- {$placesHint}
+
+Rules:
+- Return ONLY a JSON object: {"query": "..."}
+- The query must be in ENGLISH, 4-7 words max
+- Focus on the most visually stunning, iconic aspect of the destination
+- Do NOT include people, crowds, or food — focus on landscapes, architecture, or scenery
+- Examples of good queries: "Hoi An ancient town lanterns night", "Ha Long Bay emerald waters karst", "Hue imperial citadel sunset", "Da Lat pine forest misty"
+- Return only valid JSON. No markdown. No explanation.
+PROMPT;
+
+        try {
+            $result = $this->callWithRetry($prompt, expectKey: 'query');
+            $query  = trim((string) ($result['query'] ?? ''));
+
+            if ($query) {
+                return $query;
+            }
+        } catch (\Throwable $e) {
+            Log::warning('GroqService: generateCoverImageQuery failed', [
+                'destination' => $trip->destination,
+                'error'       => $e->getMessage(),
+            ]);
+        }
+
+        // Fallback: dùng tên destination
+        return "travel {$trip->destination} landscape scenery";
+    }
 
     // ─────────────────────────────────────────────
     // generate() — helper đơn giản dùng HTTP client

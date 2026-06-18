@@ -11,6 +11,7 @@ use App\Services\AI\DTOs\TripDayDTO;
 use App\Services\AI\DTOs\TripGenerationRequest;
 use App\Services\GeocodingService;
 use App\Services\NotificationService;
+use App\Services\UnsplashService;
 use App\Services\WeatherService;
 use Carbon\Carbon;
 use Illuminate\Bus\Queueable;
@@ -41,6 +42,7 @@ class GenerateTripJob implements ShouldQueue
         WeatherService $weatherService,
         GeocodingService $geocodingService,
         NotificationService $notificationService,
+        UnsplashService $unsplashService,
     ): void {
         $trip = Trip::with('user')->findOrFail($this->tripId);
 
@@ -202,7 +204,34 @@ class GenerateTripJob implements ShouldQueue
                 ]);
             });
 
-            // 5. Thông báo hoàn thành
+            // 5. Fetch ảnh đại diện từ Unsplash — dùng query do AI sinh ra
+            try {
+                $tripWithDays   = Trip::with('days.places')->find($this->tripId);
+                $coverQuery     = $aiService->generateCoverImageQuery($tripWithDays);
+                $coverImageUrl  = $unsplashService->getPhotoByQuery($coverQuery);
+
+                // Fallback: nếu Unsplash không trả kết quả, thử query đơn giản hơn
+                if (! $coverImageUrl) {
+                    $coverImageUrl = $unsplashService->getTravelPhoto($trip->destination);
+                }
+
+                if ($coverImageUrl) {
+                    Trip::where('id', $this->tripId)->update(['cover_image_url' => $coverImageUrl]);
+                    Log::info("GenerateTripJob: cover image saved", [
+                        'trip_id' => $this->tripId,
+                        'query'   => $coverQuery,
+                        'url'     => $coverImageUrl,
+                    ]);
+                }
+            } catch (\Throwable $e) {
+                // Ảnh cover không quan trọng — không fail cả job
+                Log::warning('GenerateTripJob: cover image fetch failed', [
+                    'trip_id' => $this->tripId,
+                    'error'   => $e->getMessage(),
+                ]);
+            }
+
+            // 6. Thông báo hoàn thành
             $notificationService->tripCompleted($trip->user_id, $trip->id, $trip->destination);
 
             Log::info("GenerateTripJob completed", ['trip_id' => $this->tripId]);

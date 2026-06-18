@@ -50,4 +50,10 @@ interface AIServiceInterface
      * @return array<string, array<string, mixed>>  Grouped by category
      */
     public function generatePackingList(\App\Models\Trip $trip): array;
+
+    /**
+     * Sinh search query tiếng Anh để tìm ảnh đại diện cho chuyến đi.
+     * Trả về chuỗi query ngắn (5-8 từ) phù hợp dùng với Unsplash API.
+     */
+    public function generateCoverImageQuery(\App\Models\Trip $trip): string;
 }

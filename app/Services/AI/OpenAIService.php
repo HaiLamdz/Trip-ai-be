@@ -222,6 +222,62 @@ PROMPT;
     }
 
     // ─────────────────────────────────────────────
+    // generateCoverImageQuery — sinh search query cho ảnh đại diện
+    // ─────────────────────────────────────────────
+
+    public function generateCoverImageQuery(\App\Models\Trip $trip): string
+    {
+        $travelType = match ($trip->travel_type) {
+            'couple' => 'romantic couple travel',
+            'family' => 'family vacation',
+            'group'  => 'group friends travel',
+            default  => 'travel',
+        };
+
+        $topPlaces = $trip->days->flatMap(fn ($d) => $d->places)
+            ->filter(fn ($p) => in_array($p->place_type, ['attraction', 'hotel']))
+            ->take(3)
+            ->pluck('place_name')
+            ->filter()
+            ->implode(', ');
+
+        $placesHint = $topPlaces ? "Key places in the itinerary: {$topPlaces}." : '';
+
+        $prompt = <<<PROMPT
+You are a travel photography expert. Suggest the BEST Unsplash search query to find a stunning cover photo for this trip.
+
+Trip details:
+- Destination: {$trip->destination}
+- Duration: {$trip->duration_days} days
+- Travel type: {$travelType}
+- {$placesHint}
+
+Rules:
+- Return ONLY a JSON object: {"query": "..."}
+- The query must be in ENGLISH, 4-7 words max
+- Focus on the most visually stunning, iconic aspect of the destination
+- Do NOT include people, crowds, or food — focus on landscapes, architecture, or scenery
+- Examples: "Hoi An ancient town lanterns night", "Ha Long Bay emerald waters karst"
+- Return only valid JSON. No markdown. No explanation.
+PROMPT;
+
+        try {
+            $result = $this->callWithRetry($prompt, messages: null, expectTimeline: false, expectKey: 'query');
+            $query  = trim((string) ($result['query'] ?? ''));
+            if ($query) {
+                return $query;
+            }
+        } catch (\Throwable $e) {
+            Log::warning('OpenAIService: generateCoverImageQuery failed', [
+                'destination' => $trip->destination,
+                'error'       => $e->getMessage(),
+            ]);
+        }
+
+        return "travel {$trip->destination} landscape scenery";
+    }
+
+    // ─────────────────────────────────────────────
     // Private helpers
     // ─────────────────────────────────────────────
 

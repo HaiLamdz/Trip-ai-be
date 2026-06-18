@@ -34,6 +34,7 @@ class Trip extends Model
         'share_token',
         'is_public',
         'user_notes',
+        'cover_image_url',
     ];
 
     protected function casts(): array
