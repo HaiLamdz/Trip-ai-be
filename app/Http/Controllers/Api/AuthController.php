@@ -43,8 +43,12 @@ class AuthController extends Controller
     public function login(LoginRequest $request): JsonResponse
     {
         $credentials = $request->only('email', 'password');
-
-        if (! $token = Auth::guard('api')->attempt($credentials)) {
+        // dd($credentials);
+//         dd([
+//     'credentials' => $credentials,
+//     'user' => User::where('email', $request->email)->first(),
+// ]);
+        if (!$token = Auth::guard('api')->attempt($credentials)) {
             return response()->json([
                 'message' => 'Email hoặc mật khẩu không đúng',
             ], 401);

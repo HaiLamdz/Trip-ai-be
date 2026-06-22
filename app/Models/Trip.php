@@ -35,6 +35,12 @@ class Trip extends Model
         'is_public',
         'user_notes',
         'cover_image_url',
+        'is_published',
+        'published_at',
+        'publish_description',
+        'clone_count',
+        'view_count',
+        'cloned_from_id',
     ];
 
     protected function casts(): array
@@ -51,6 +57,10 @@ class Trip extends Model
             'preferences'       => 'array',
             'timeline'          => 'array',
             'is_public'         => 'boolean',
+            'is_published'      => 'boolean',
+            'published_at'      => 'datetime',
+            'clone_count'       => 'integer',
+            'view_count'        => 'integer',
         ];
     }
 
@@ -91,5 +101,20 @@ class Trip extends Model
     public function favoritedBy(): \Illuminate\Database\Eloquent\Relations\BelongsToMany
     {
         return $this->belongsToMany(User::class, 'favorites');
+    }
+
+    public function members(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(TripMember::class);
+    }
+
+    public function clonedFrom(): \Illuminate\Database\Eloquent\Relations\BelongsTo
+    {
+        return $this->belongsTo(Trip::class, 'cloned_from_id');
+    }
+
+    public function clones(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(Trip::class, 'cloned_from_id');
     }
 }

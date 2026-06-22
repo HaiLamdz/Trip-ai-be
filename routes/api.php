@@ -5,11 +5,13 @@ use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\BudgetController;
 use App\Http\Controllers\Api\ChatController;
 use App\Http\Controllers\Api\CheckinController;
+use App\Http\Controllers\Api\CommunityController;
 use App\Http\Controllers\Api\ExpenseController;
 use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\PlaceController;
 use App\Http\Controllers\Api\ProfileController;
 use App\Http\Controllers\Api\TripController;
+use App\Http\Controllers\Api\TripMemberController;
 use Illuminate\Support\Facades\Route;
 
 // ─────────────────────────────────────────────
@@ -34,6 +36,9 @@ Route::prefix('auth')->group(function () {
 // Public trip share (no auth required)
 Route::get('/trips/share/{token}', [TripController::class, 'showPublic']);
 
+// Community feed (public — không cần auth, nhưng nếu có auth thì biết user đã clone chưa)
+Route::get('/community', [CommunityController::class, 'index']);
+
 // ─────────────────────────────────────────────
 // Protected routes (JWT required) — standard rate limit: 60/min
 // ─────────────────────────────────────────────
@@ -57,6 +62,9 @@ Route::middleware(['jwt.auth', 'throttle:api'])->group(function () {
     // Trips — standard CRUD
     Route::prefix('trips')->group(function () {
         Route::get('/suggestions',        [TripController::class, 'suggestions']);
+        Route::get('/shared-with-me',     [TripMemberController::class, 'sharedWithMe']);
+        Route::get('/pending-invites',    [TripMemberController::class, 'pendingInvites']);
+        Route::post('/members/accept/{token}', [TripMemberController::class, 'accept']);
         Route::get('/',                   [TripController::class, 'index']);
         Route::get('/{id}',               [TripController::class, 'show']);
         Route::delete('/{id}',            [TripController::class, 'destroy']);
@@ -85,6 +93,21 @@ Route::middleware(['jwt.auth', 'throttle:api'])->group(function () {
         Route::post('/{tripId}/expenses',                         [ExpenseController::class, 'store']);
         Route::put('/{tripId}/expenses/{expenseId}',              [ExpenseController::class, 'update']);
         Route::delete('/{tripId}/expenses/{expenseId}',           [ExpenseController::class, 'destroy']);
+
+        // Publish / Unpublish
+        Route::post('/{id}/publish',                              [CommunityController::class, 'publish']);
+
+        // Collaborative members
+        Route::get('/{tripId}/members',                           [TripMemberController::class, 'index']);
+        Route::post('/{tripId}/members/invite',                   [TripMemberController::class, 'invite']);
+        Route::delete('/{tripId}/members/{memberId}',             [TripMemberController::class, 'remove']);
+        Route::put('/{tripId}/members/{memberId}/role',           [TripMemberController::class, 'updateRole']);
+    });
+
+    // Community
+    Route::prefix('community')->group(function () {
+        Route::get('/{id}',       [CommunityController::class, 'show']);
+        Route::post('/{id}/clone',[CommunityController::class, 'clone']);
     });
 
     // Favorites
