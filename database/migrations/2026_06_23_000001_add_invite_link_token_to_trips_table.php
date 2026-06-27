@@ -11,9 +11,11 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::table('trips', function (Blueprint $table) {
-            $table->string('invite_link_token')->nullable()->after('cloned_from_id');
-        });
+        if (!Schema::hasColumn('trips', 'invite_link_token')) {
+            Schema::table('trips', function (Blueprint $table) {
+                $table->string('invite_link_token')->nullable()->after('cloned_from_id');
+            });
+        }
     }
 
     /**
@@ -21,8 +23,10 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::table('trips', function (Blueprint $table) {
-            $table->dropColumn('invite_link_token');
-        });
+        if (Schema::hasColumn('trips', 'invite_link_token')) {
+            Schema::table('trips', function (Blueprint $table) {
+                $table->dropColumn('invite_link_token');
+            });
+        }
     }
 };
