@@ -41,6 +41,7 @@ class Trip extends Model
         'clone_count',
         'view_count',
         'cloned_from_id',
+        'invite_link_token',
     ];
 
     protected function casts(): array

@@ -6,21 +6,21 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
 /**
- * Tìm địa điểm gần đó dùng Overpass API (OpenStreetMap) — hoàn toàn miễn phí.
+ * Tìm địa điểm gần đó dùng Google Places API.
  */
 class NearbyService
 {
     // Bán kính tìm kiếm mặc định: 500m
     private const RADIUS_METERS = 500;
 
-    // Map place_type → OSM amenity/tourism tags
+    // Map place_type → Google Places types
     private const TYPE_MAP = [
-        'food'       => '["amenity"~"restaurant|food_court|fast_food"]',
-        'cafe'       => '["amenity"="cafe"]',
-        'attraction' => '["tourism"~"attraction|museum|viewpoint|monument"]',
-        'hotel'      => '["tourism"~"hotel|hostel|guest_house"]',
-        'shopping'   => '["shop"~"mall|supermarket|clothes|market"]',
-        'nightlife'  => '["amenity"~"bar|pub|nightclub"]',
+        'food'       => 'restaurant',
+        'cafe'       => 'cafe',
+        'attraction' => 'tourist_attraction',
+        'hotel'      => 'lodging',
+        'shopping'   => 'shopping_mall',
+        'nightlife'  => 'bar',
     ];
 
     /**
@@ -30,54 +30,49 @@ class NearbyService
      */
     public function findNearby(float $lat, float $lng, string $type): array
     {
-        $osmFilter = self::TYPE_MAP[$type] ?? self::TYPE_MAP['food'];
-        $radius    = self::RADIUS_METERS;
+        $googleType = self::TYPE_MAP[$type] ?? self::TYPE_MAP['food'];
+        $radius = self::RADIUS_METERS;
+        $apiKey = env('GOOGLE_MAPS_API_KEY');
 
-        // Overpass QL query
-        $query = <<<OQL
-[out:json][timeout:10];
-(
-  node{$osmFilter}(around:{$radius},{$lat},{$lng});
-  way{$osmFilter}(around:{$radius},{$lat},{$lng});
-);
-out center 5;
-OQL;
+        if (!$apiKey) {
+            Log::warning('NearbyService: GOOGLE_MAPS_API_KEY not configured');
+            return [];
+        }
 
         try {
             $response = Http::timeout(12)
-                ->withHeaders(['User-Agent' => 'TripAI/1.0 (travel planner app)'])
-                ->post('https://overpass-api.de/api/interpreter', [
-                    'data' => $query,
+                ->get('https://maps.googleapis.com/maps/api/place/nearbysearch/json', [
+                    'location' => "{$lat},{$lng}",
+                    'radius' => $radius,
+                    'type' => $googleType,
+                    'key' => $apiKey,
+                    'language' => 'vi',
                 ]);
 
             if (! $response->successful()) {
-                Log::warning('NearbyService: Overpass API error', ['status' => $response->status()]);
+                Log::warning('NearbyService: Google Places API error', ['status' => $response->status()]);
                 return [];
             }
 
-            $elements = $response->json('elements', []);
+            $data = $response->json();
+            $results = $data['results'] ?? [];
 
-            return collect($elements)
+            return collect($results)
                 ->take(5)
-                ->map(function (array $el) use ($type): array {
-                    // Way elements có center, node elements có lat/lon trực tiếp
-                    $elLat  = $el['lat']            ?? $el['center']['lat'] ?? null;
-                    $elLng  = $el['lon']            ?? $el['center']['lon'] ?? null;
-                    $tags   = $el['tags']           ?? [];
-                    $name   = $tags['name']         ?? $tags['name:vi'] ?? $tags['name:en'] ?? 'Không rõ tên';
-                    $addr   = $tags['addr:street']  ?? $tags['addr:full'] ?? null;
+                ->map(function (array $place) use ($type): array {
+                    $location = $place['geometry']['location'] ?? null;
 
                     return [
-                        'osm_id'     => $el['id'],
-                        'name'       => $name,
+                        'osm_id' => $place['place_id'] ?? null,
+                        'name' => $place['name'] ?? 'Không rõ tên',
                         'place_type' => $type,
-                        'latitude'   => $elLat,
-                        'longitude'  => $elLng,
-                        'address'    => $addr,
-                        'opening_hours' => $tags['opening_hours'] ?? null,
-                        'phone'      => $tags['phone'] ?? $tags['contact:phone'] ?? null,
-                        'website'    => $tags['website'] ?? $tags['contact:website'] ?? null,
-                        'cuisine'    => $tags['cuisine'] ?? null,
+                        'latitude' => $location['lat'] ?? null,
+                        'longitude' => $location['lng'] ?? null,
+                        'address' => $place['vicinity'] ?? null,
+                        'opening_hours' => $place['opening_hours']['weekday_text'][0] ?? null,
+                        'phone' => $place['formatted_phone_number'] ?? null,
+                        'website' => $place['website'] ?? null,
+                        'cuisine' => null, // Google Places doesn't provide cuisine directly
                     ];
                 })
                 ->filter(fn ($p) => $p['latitude'] && $p['longitude'])
