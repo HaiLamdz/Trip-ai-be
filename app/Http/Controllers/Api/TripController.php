@@ -86,7 +86,15 @@ class TripController extends Controller
         $cacheKey = "trips:user:{$user->id}:page:" . ($request->query('page', 1));
 
         $trips = Cache::remember($cacheKey, 300, function () use ($user) {
-            return Trip::where('user_id', $user->id)
+            // Lấy cả trip mà user là owner và trip mà user là member
+            $ownedTrips = Trip::where('user_id', $user->id)->pluck('id');
+            $memberTripIds = \App\Models\TripMember::where('user_id', $user->id)
+                ->where('status', 'accepted')
+                ->pluck('trip_id');
+
+            $allTripIds = $ownedTrips->merge($memberTripIds)->unique();
+
+            return Trip::whereIn('id', $allTripIds)
                 ->orderBy('created_at', 'desc')
                 ->paginate(10);
         });
@@ -110,7 +118,14 @@ class TripController extends Controller
             ], 404);
         }
 
-        if ($trip->user_id !== $user->id) {
+        // Cho phép owner hoặc member truy cập
+        $isOwner = $trip->user_id === $user->id;
+        $isMember = \App\Models\TripMember::where('trip_id', $trip->id)
+            ->where('user_id', $user->id)
+            ->where('status', 'accepted')
+            ->exists();
+
+        if (! $isOwner && ! $isMember) {
             return response()->json([
                 'message' => 'Bạn không có quyền truy cập tài nguyên này'
             ], 403);
@@ -125,6 +140,13 @@ class TripController extends Controller
         $tripArray['budget_data'] = optional(
             $trip->getRelation('budget')
         )->toArray();
+
+        // Thêm thông tin role của user trong trip
+        $tripArray['user_role'] = $isOwner ? 'owner' : (
+            \App\Models\TripMember::where('trip_id', $trip->id)
+                ->where('user_id', $user->id)
+                ->value('role') ?? 'viewer'
+        );
 
         return response()->json([
             'trip' => $tripArray
@@ -144,7 +166,14 @@ class TripController extends Controller
             return response()->json(['message' => 'Không tìm thấy tài nguyên'], 404);
         }
 
-        if ($trip->user_id !== $user->id) {
+        // Cho phép owner hoặc member truy cập
+        $isOwner = $trip->user_id === $user->id;
+        $isMember = \App\Models\TripMember::where('trip_id', $trip->id)
+            ->where('user_id', $user->id)
+            ->where('status', 'accepted')
+            ->exists();
+
+        if (! $isOwner && ! $isMember) {
             return response()->json(['message' => 'Bạn không có quyền truy cập tài nguyên này'], 403);
         }
 
@@ -174,7 +203,14 @@ class TripController extends Controller
             return response()->json(['message' => 'Không tìm thấy tài nguyên'], 404);
         }
 
-        if ($trip->user_id !== $user->id) {
+        // Cho phép owner hoặc member truy cập
+        $isOwner = $trip->user_id === $user->id;
+        $isMember = \App\Models\TripMember::where('trip_id', $trip->id)
+            ->where('user_id', $user->id)
+            ->where('status', 'accepted')
+            ->exists();
+
+        if (! $isOwner && ! $isMember) {
             return response()->json(['message' => 'Bạn không có quyền truy cập tài nguyên này'], 403);
         }
 
@@ -212,7 +248,14 @@ class TripController extends Controller
             return response()->json(['message' => 'Không tìm thấy tài nguyên'], 404);
         }
 
-        if ($trip->user_id !== $user->id) {
+        // Cho phép owner hoặc member truy cập
+        $isOwner = $trip->user_id === $user->id;
+        $isMember = \App\Models\TripMember::where('trip_id', $trip->id)
+            ->where('user_id', $user->id)
+            ->where('status', 'accepted')
+            ->exists();
+
+        if (! $isOwner && ! $isMember) {
             return response()->json(['message' => 'Bạn không có quyền truy cập tài nguyên này'], 403);
         }
 
@@ -266,7 +309,14 @@ class TripController extends Controller
             return response()->json(['message' => 'Không tìm thấy tài nguyên'], 404);
         }
 
-        if ($trip->user_id !== $user->id) {
+        // Cho phép owner hoặc member truy cập
+        $isOwner = $trip->user_id === $user->id;
+        $isMember = \App\Models\TripMember::where('trip_id', $trip->id)
+            ->where('user_id', $user->id)
+            ->where('status', 'accepted')
+            ->exists();
+
+        if (! $isOwner && ! $isMember) {
             return response()->json(['message' => 'Bạn không có quyền truy cập tài nguyên này'], 403);
         }
 
@@ -307,7 +357,14 @@ class TripController extends Controller
             return response()->json(['message' => 'Không tìm thấy tài nguyên'], 404);
         }
 
-        if ($trip->user_id !== $user->id) {
+        // Cho phép owner hoặc member truy cập
+        $isOwner = $trip->user_id === $user->id;
+        $isMember = \App\Models\TripMember::where('trip_id', $trip->id)
+            ->where('user_id', $user->id)
+            ->where('status', 'accepted')
+            ->exists();
+
+        if (! $isOwner && ! $isMember) {
             return response()->json(['message' => 'Bạn không có quyền truy cập tài nguyên này'], 403);
         }
 
@@ -331,7 +388,14 @@ class TripController extends Controller
             return response()->json(['message' => 'Không tìm thấy tài nguyên'], 404);
         }
 
-        if ($trip->user_id !== $user->id) {
+        // Cho phép owner hoặc member truy cập
+        $isOwner = $trip->user_id === $user->id;
+        $isMember = \App\Models\TripMember::where('trip_id', $trip->id)
+            ->where('user_id', $user->id)
+            ->where('status', 'accepted')
+            ->exists();
+
+        if (! $isOwner && ! $isMember) {
             return response()->json(['message' => 'Bạn không có quyền truy cập tài nguyên này'], 403);
         }
 
@@ -388,7 +452,14 @@ class TripController extends Controller
             return response()->json(['message' => 'Không tìm thấy tài nguyên'], 404);
         }
 
-        if ($trip->user_id !== $user->id) {
+        // Cho phép owner hoặc member truy cập
+        $isOwner = $trip->user_id === $user->id;
+        $isMember = \App\Models\TripMember::where('trip_id', $trip->id)
+            ->where('user_id', $user->id)
+            ->where('status', 'accepted')
+            ->exists();
+
+        if (! $isOwner && ! $isMember) {
             return response()->json(['message' => 'Bạn không có quyền truy cập tài nguyên này'], 403);
         }
 
@@ -418,7 +489,14 @@ class TripController extends Controller
             return response()->json(['message' => 'Không tìm thấy tài nguyên'], 404);
         }
 
-        if ($trip->user_id !== $user->id) {
+        // Cho phép owner hoặc member truy cập
+        $isOwner = $trip->user_id === $user->id;
+        $isMember = \App\Models\TripMember::where('trip_id', $trip->id)
+            ->where('user_id', $user->id)
+            ->where('status', 'accepted')
+            ->exists();
+
+        if (! $isOwner && ! $isMember) {
             return response()->json(['message' => 'Bạn không có quyền truy cập tài nguyên này'], 403);
         }
 
@@ -451,7 +529,14 @@ class TripController extends Controller
             return response()->json(['message' => 'Không tìm thấy tài nguyên'], 404);
         }
 
-        if ($trip->user_id !== $user->id) {
+        // Cho phép owner hoặc member truy cập
+        $isOwner = $trip->user_id === $user->id;
+        $isMember = \App\Models\TripMember::where('trip_id', $trip->id)
+            ->where('user_id', $user->id)
+            ->where('status', 'accepted')
+            ->exists();
+
+        if (! $isOwner && ! $isMember) {
             return response()->json(['message' => 'Bạn không có quyền truy cập tài nguyên này'], 403);
         }
 

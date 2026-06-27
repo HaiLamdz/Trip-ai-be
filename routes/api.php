@@ -36,6 +36,9 @@ Route::prefix('auth')->group(function () {
 // Public trip share (no auth required)
 Route::get('/trips/share/{token}', [TripController::class, 'showPublic']);
 
+// Public invite link (no auth required)
+Route::get('/trips/invite/{token}', [TripMemberController::class, 'showInviteTrip']);
+
 // Community feed (public — không cần auth, nhưng nếu có auth thì biết user đã clone chưa)
 Route::get('/community', [CommunityController::class, 'index']);
 
@@ -100,6 +103,7 @@ Route::middleware(['jwt.auth', 'throttle:api'])->group(function () {
         // Collaborative members
         Route::get('/{tripId}/members',                           [TripMemberController::class, 'index']);
         Route::post('/{tripId}/members/invite',                   [TripMemberController::class, 'invite']);
+        Route::post('/{tripId}/invite-link',                      [TripMemberController::class, 'generateInviteLink']);
         Route::delete('/{tripId}/members/{memberId}',             [TripMemberController::class, 'remove']);
         Route::put('/{tripId}/members/{memberId}/role',           [TripMemberController::class, 'updateRole']);
     });

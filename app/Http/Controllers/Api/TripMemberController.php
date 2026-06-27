@@ -121,30 +121,77 @@ class TripMemberController extends Controller
 
     // ─────────────────────────────────────────────
     // POST /api/trips/members/accept/{token}
-    // Chấp nhận lời mời
+    // Chấp nhận lời mời (hỗ trợ cả invite_token và invite_link_token)
     // ─────────────────────────────────────────────
 
     public function accept(string $token): JsonResponse
     {
         $user = Auth::guard('api')->user();
 
+        // Thử tìm member với invite_token (lời mời email)
         $member = TripMember::where('invite_token', $token)
             ->where('user_id', $user->id)
             ->where('status', 'pending')
             ->first();
 
-        if (! $member) {
-            return response()->json(['message' => 'Lời mời không hợp lệ hoặc đã được xử lý'], 404);
+        if ($member) {
+            $member->update([
+                'status'      => 'accepted',
+                'accepted_at' => now(),
+            ]);
+
+            return response()->json([
+                'message' => 'Đã tham gia lịch trình.',
+                'trip_id' => $member->trip_id,
+            ]);
         }
 
-        $member->update([
+        // Nếu không tìm thấy, thử tìm trip với invite_link_token (link mời công khai)
+        $trip = Trip::where('invite_link_token', $token)->first();
+
+        if (! $trip) {
+            return response()->json(['message' => 'Link mời không hợp lệ hoặc đã hết hạn'], 404);
+        }
+
+        // Kiểm tra xem user đã là member chưa
+        $existingMember = TripMember::where('trip_id', $trip->id)
+            ->where('user_id', $user->id)
+            ->first();
+
+        if ($existingMember) {
+            if ($existingMember->status === 'accepted') {
+                return response()->json(['message' => 'Bạn đã là thành viên của lịch trình này'], 409);
+            }
+
+            // Nếu đang pending, chấp nhận luôn
+            $existingMember->update([
+                'status'      => 'accepted',
+                'accepted_at' => now(),
+            ]);
+
+            return response()->json([
+                'message' => 'Đã tham gia lịch trình.',
+                'trip_id' => $trip->id,
+            ]);
+        }
+
+        // Tạo mới member với role viewer
+        TripMember::create([
+            'trip_id'     => $trip->id,
+            'user_id'     => $user->id,
+            'role'        => 'viewer',
             'status'      => 'accepted',
             'accepted_at' => now(),
         ]);
 
+        // Xóa cache để dashboard hiển thị trip mới
+        for ($page = 1; $page <= 20; $page++) {
+            \Illuminate\Support\Facades\Cache::forget("trips:user:{$user->id}:page:{$page}");
+        }
+
         return response()->json([
             'message' => 'Đã tham gia lịch trình.',
-            'trip_id' => $member->trip_id,
+            'trip_id' => $trip->id,
         ]);
     }
 
@@ -249,6 +296,64 @@ class TripMemberController extends Controller
             ]);
 
         return response()->json(['invites' => $invites]);
+    }
+
+    // ─────────────────────────────────────────────
+    // POST /api/trips/{tripId}/invite-link
+    // Tạo link mời công khai (không cần email)
+    // ─────────────────────────────────────────────
+
+    public function generateInviteLink(int $tripId): JsonResponse
+    {
+        $user = Auth::guard('api')->user();
+        $trip = Trip::find($tripId);
+
+        if (! $trip) {
+            return response()->json(['message' => 'Không tìm thấy lịch trình'], 404);
+        }
+
+        if ($trip->user_id !== $user->id) {
+            return response()->json(['message' => 'Chỉ chủ lịch trình mới có thể tạo link mời'], 403);
+        }
+
+        // Tạo hoặc lấy invite link token
+        if (! $trip->invite_link_token) {
+            $trip->invite_link_token = Str::random(48);
+            $trip->save();
+        }
+
+        $inviteUrl = config('app.frontend_url') . '/trips/invite/' . $trip->invite_link_token;
+
+        return response()->json([
+            'message' => 'Đã tạo link mời',
+            'invite_url' => $inviteUrl,
+            'invite_token' => $trip->invite_link_token,
+        ]);
+    }
+
+    // ─────────────────────────────────────────────
+    // GET /api/trips/invite/{token}
+    // Xem thông tin trip từ link mời (không cần auth)
+    // ─────────────────────────────────────────────
+
+    public function showInviteTrip(string $token): JsonResponse
+    {
+        $trip = Trip::with(['days.places', 'budget', 'user:id,name,avatar'])
+            ->where('invite_link_token', $token)
+            ->first();
+
+        if (! $trip) {
+            return response()->json(['message' => 'Link mời không hợp lệ hoặc đã hết hạn'], 404);
+        }
+
+        $tripArray = $trip->toArray();
+        $tripArray['budget']      = (float) $trip->getRawOriginal('budget');
+        $tripArray['budget_data'] = $trip->getRelation('budget')?->toArray();
+
+        return response()->json([
+            'trip' => $tripArray,
+            'owner' => $trip->user,
+        ]);
     }
 
     // ─────────────────────────────────────────────
